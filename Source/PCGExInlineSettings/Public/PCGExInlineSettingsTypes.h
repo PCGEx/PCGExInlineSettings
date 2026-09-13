@@ -58,6 +58,12 @@ struct PCGEXINLINESETTINGS_API FPCGExInlineSettings : public FPCGExInlineSetting
 
 	bool IsExternal() const { return !External.IsNull(); }
 
+	/**
+	 * Effective settings object, resolved from Settings without loading; null when unloaded or unset. Read this at
+	 * execution rather than Instance: on PCG's transient override copies Instance is a nested duplicate.
+	 */
+	UPCGSettings* Resolve() const;
+
 	/** Whether InClass may be used, given AllowedClass. */
 	bool IsAllowedClass(const UClass* InClass) const;
 	bool IsAllowed(const UPCGSettings* InSettings) const;

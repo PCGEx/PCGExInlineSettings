@@ -136,6 +136,19 @@ namespace PCGExInlineSettingsCustomization
 		}
 	}
 
+	// Class of an asset by path, from the loaded object or the asset registry; null when neither knows it.
+	const UClass* GetAssetClass(const FSoftObjectPath& InPath)
+	{
+		if (const UObject* Loaded = InPath.ResolveObject())
+		{
+			return Loaded->GetClass();
+		}
+
+		const IAssetRegistry* AssetRegistry = IAssetRegistry::Get();
+		const FAssetData AssetData = AssetRegistry ? AssetRegistry->GetAssetByObjectPath(InPath) : FAssetData();
+		return AssetData.IsValid() ? AssetData.GetClass() : nullptr;
+	}
+
 	// A replaced instance owned by this outer leaves its package (undoable); a shared one belongs to another object.
 	void ReleaseOwnedInstance(UObject* InOuter, FPCGExInlineSettings& InValue)
 	{
@@ -685,7 +698,18 @@ EVisibility FPCGExInlineSettingsCustomization::GetNotAllowedVisibility() const
 	bool bNotAllowed = false;
 	ForEachValue([BaseClass, &bNotAllowed](UObject*, FPCGExInlineSettings& Value)
 	{
-		bNotAllowed |= !Value.IsExternal() && Value.Instance && !Value.Instance->GetClass()->IsChildOf(BaseClass);
+		// External assets are checked through the registry so an unloaded asset still gets flagged.
+		const UClass* EffectiveClass = nullptr;
+		if (Value.IsExternal())
+		{
+			EffectiveClass = PCGExInlineSettingsCustomization::GetAssetClass(Value.External.ToSoftObjectPath());
+		}
+		else if (Value.Instance)
+		{
+			EffectiveClass = Value.Instance->GetClass();
+		}
+
+		bNotAllowed |= EffectiveClass && !EffectiveClass->IsChildOf(BaseClass);
 	});
 
 	return bNotAllowed ? EVisibility::Visible : EVisibility::Collapsed;

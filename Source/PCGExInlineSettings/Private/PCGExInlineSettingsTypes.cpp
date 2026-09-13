@@ -46,6 +46,11 @@ void FPCGExInlineSettings::SetExternal(const TSoftObjectPtr<UPCGSettings>& InExt
 	SyncSettings();
 }
 
+UPCGSettings* FPCGExInlineSettings::Resolve() const
+{
+	return Cast<UPCGSettings>(Settings.ResolveObject());
+}
+
 bool FPCGExInlineSettings::IsAllowedClass(const UClass* InClass) const
 {
 	const UClass* BaseClass = AllowedClass.Get() ? AllowedClass.Get() : UPCGSettings::StaticClass();
