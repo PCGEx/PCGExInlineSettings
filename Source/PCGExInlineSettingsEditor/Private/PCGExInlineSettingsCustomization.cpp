@@ -24,7 +24,9 @@
 #include "Modules/ModuleManager.h"
 #include "StructUtils/PropertyBag.h"
 #include "Styling/AppStyle.h"
+#include "Styling/StyleColors.h"
 #include "Textures/SlateIcon.h"
+#include "UObject/UnrealType.h"
 #include "UObject/UObjectGlobals.h"
 #include "UObject/UObjectIterator.h"
 #include "Widgets/Images/SImage.h"
@@ -45,6 +47,7 @@
 #include "Elements/Blueprint/PCGBlueprintBaseElement.h"
 #include "Helpers/PCGAssetHelpers.h"
 
+#include "PCGExInlineSettingsEditorSettings.h"
 #include "PCGExInlineSettingsTypes.h"
 
 #define LOCTEXT_NAMESPACE "PCGExInlineSettingsCustomization"
@@ -96,20 +99,28 @@ namespace PCGExInlineSettingsCustomization
 		return Extra.IsEmpty() ? Title : FText::Format(LOCTEXT("TitleWithExtra", "{0} ({1})"), Title, FText::FromString(Extra));
 	}
 
-	// Base-class properties are node plumbing (debug, asset info, GPU, determinism); Seed is the exception.
-	bool ShouldHideInstanceProperty(const FProperty* InProperty)
+	// Properties declared by the PCG bases are node plumbing (debug, asset info, GPU, determinism), not settings.
+	bool IsBaseClassProperty(const FProperty* InProperty)
 	{
-		if (!InProperty || InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UPCGSettings, Seed))
-		{
-			return false;
-		}
-
 		const UClass* OwnerClass = InProperty->GetOwnerClass();
 		return OwnerClass == UPCGSettings::StaticClass() || OwnerClass == UPCGSettingsInterface::StaticClass() || OwnerClass == UPCGData::StaticClass();
 	}
 
-	// Leaf property handles under a category or object node, nested categories flattened.
-	void GatherVisibleProperties(const TSharedRef<IPropertyHandle>& InContainer, TArray<TSharedRef<IPropertyHandle>>& OutProperties)
+	// First segment of the property's Category meta, the group it lands in.
+	FName GetTopCategory(const FProperty* InProperty)
+	{
+		FString Category = InProperty->GetMetaData(TEXT("Category"));
+		int32 SeparatorIndex = INDEX_NONE;
+		if (Category.FindChar(TEXT('|'), SeparatorIndex))
+		{
+			Category.LeftInline(SeparatorIndex);
+		}
+		Category.TrimStartAndEndInline();
+		return Category.IsEmpty() ? NAME_None : FName(*Category);
+	}
+
+	// Leaf property handles under an object node, category nodes flattened when the host created any.
+	void GatherLeafProperties(const TSharedRef<IPropertyHandle>& InContainer, TArray<TSharedRef<IPropertyHandle>>& OutProperties)
 	{
 		uint32 NumChildren = 0;
 		if (InContainer->GetNumChildren(NumChildren) != FPropertyAccess::Success)
@@ -127,12 +138,59 @@ namespace PCGExInlineSettingsCustomization
 
 			if (!Child->GetProperty())
 			{
-				GatherVisibleProperties(Child.ToSharedRef(), OutProperties);
+				GatherLeafProperties(Child.ToSharedRef(), OutProperties);
 			}
-			else if (!ShouldHideInstanceProperty(Child->GetProperty()))
+			else
 			{
 				OutProperties.Add(Child.ToSharedRef());
 			}
+		}
+	}
+
+	// Menu row for the visibility popover: a small dot (bright = shown, dim = hidden, half = partly shown; accent = local
+	// override) before the label. The label stays an STextBlock so the menu search still finds it.
+	TSharedRef<SWidget> MakeVisibilityEntry(const FText& InLabel, const FText& InTooltip, const int32 InNumShown, const int32 InNumTotal, const bool bInLocalOverride)
+	{
+		const float Alpha = InNumShown == 0 ? 0.25f : (InNumShown < InNumTotal ? 0.55f : 0.9f);
+		FLinearColor DotColor = bInLocalOverride ? FStyleColors::AccentBlue.GetSpecifiedColor() : FLinearColor::White;
+		DotColor.A = Alpha;
+
+		return SNew(SHorizontalBox)
+			.ToolTipText(InTooltip)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+			[
+				SNew(SImage)
+				.Image(FAppStyle::GetBrush("Icons.BulletPoint"))
+				.ColorAndOpacity(DotColor)
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(InLabel)
+			];
+	}
+
+	FText GetVisibilityTooltip(const int32 InNumShown, const int32 InNumTotal, const bool bInLocalOverride)
+	{
+		const FText State = InNumShown == 0
+			? LOCTEXT("StateHidden", "Hidden")
+			: (InNumShown < InNumTotal ? FText::Format(LOCTEXT("StatePartial", "{0} of {1} shown"), InNumShown, InNumTotal) : LOCTEXT("StateShown", "Shown"));
+		return bInLocalOverride ? FText::Format(LOCTEXT("StateWithLocal", "{0} (local override)"), State) : State;
+	}
+
+	FText GetForceStateLabel(const FPCGExInlineSettingsCustomization::EForceState InState)
+	{
+		switch (InState)
+		{
+		case FPCGExInlineSettingsCustomization::EForceState::Default: return LOCTEXT("ForceDefault", "Default");
+		case FPCGExInlineSettingsCustomization::EForceState::Shown: return LOCTEXT("ForceShown", "Always Show");
+		case FPCGExInlineSettingsCustomization::EForceState::Hidden: return LOCTEXT("ForceHidden", "Always Hide");
+		default: checkNoEntry(); return FText::GetEmpty();
 		}
 	}
 
@@ -213,6 +271,22 @@ void FPCGExInlineSettingsCustomization::CustomizeHeader(TSharedRef<IPropertyHand
 				.Image(FAppStyle::GetBrush("Icons.Warning"))
 				.ToolTipText(LOCTEXT("NotAllowedTooltip", "The inline settings class is not permitted by the allowed class."))
 				.Visibility(this, &FPCGExInlineSettingsCustomization::GetNotAllowedVisibility)
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(4.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SComboButton)
+				.HasDownArrow(false)
+				.ToolTipText(LOCTEXT("VisibilityMenuTooltip", "Choose which inline properties are shown or hidden here, over the plugin's editor settings."))
+				.Visibility(this, &FPCGExInlineSettingsCustomization::GetVisibilityMenuVisibility)
+				.OnGetMenuContent(this, &FPCGExInlineSettingsCustomization::BuildVisibilityMenu)
+				.ButtonContent()
+				[
+					SNew(SImage)
+					.Image(FAppStyle::GetBrush("Icons.Visibility"))
+				]
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
@@ -786,49 +860,230 @@ void FPCGExInlineSettingsCustomization::AddInstanceRows(IDetailChildrenBuilder& 
 
 	const TAttribute<bool> RowsEnabled = TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateSP(this, &FPCGExInlineSettingsCustomization::IsInlineEditable));
 
-	// An inline object property exposes an object node; its children are category handles (or properties without categories).
+	// Grouping comes from each property's Category meta: object-rooted panels give category nodes, struct-rooted ones don't.
 	uint32 NumObjectNodes = 0;
 	InstanceHandle->GetNumChildren(NumObjectNodes);
 
 	for (uint32 ObjectIndex = 0; ObjectIndex < NumObjectNodes; ++ObjectIndex)
 	{
 		const TSharedPtr<IPropertyHandle> ObjectHandle = InstanceHandle->GetChildHandle(ObjectIndex);
-		uint32 NumChildren = 0;
-		if (!ObjectHandle.IsValid() || ObjectHandle->GetNumChildren(NumChildren) != FPropertyAccess::Success)
+		if (!ObjectHandle.IsValid())
 		{
 			continue;
 		}
 
-		for (uint32 ChildIndex = 0; ChildIndex < NumChildren; ++ChildIndex)
+		TArray<TSharedRef<IPropertyHandle>> Properties;
+		PCGExInlineSettingsCustomization::GatherLeafProperties(ObjectHandle.ToSharedRef(), Properties);
+
+		TMap<FName, IDetailGroup*> Groups;
+		for (const TSharedRef<IPropertyHandle>& Property : Properties)
 		{
-			const TSharedPtr<IPropertyHandle> Child = ObjectHandle->GetChildHandle(ChildIndex);
-			if (!Child.IsValid())
+			if (IsInstancePropertyHidden(Property->GetProperty()))
 			{
 				continue;
 			}
 
-			if (!Child->GetProperty())
+			const FName Category = PCGExInlineSettingsCustomization::GetTopCategory(Property->GetProperty());
+			if (Category.IsNone())
 			{
-				TArray<TSharedRef<IPropertyHandle>> Properties;
-				PCGExInlineSettingsCustomization::GatherVisibleProperties(Child.ToSharedRef(), Properties);
-				if (Properties.IsEmpty())
-				{
-					continue;
-				}
+				ChildBuilder.AddProperty(Property).IsEnabled(RowsEnabled);
+				continue;
+			}
 
-				const FText GroupName = Child->GetPropertyDisplayName();
-				IDetailGroup& Group = ChildBuilder.AddGroup(FName(*GroupName.ToString()), GroupName, /*bStartExpanded=*/true);
-				for (const TSharedRef<IPropertyHandle>& Property : Properties)
-				{
-					Group.AddPropertyRow(Property).IsEnabled(RowsEnabled);
-				}
-			}
-			else if (!PCGExInlineSettingsCustomization::ShouldHideInstanceProperty(Child->GetProperty()))
+			IDetailGroup*& Group = Groups.FindOrAdd(Category);
+			if (!Group)
 			{
-				ChildBuilder.AddProperty(Child.ToSharedRef()).IsEnabled(RowsEnabled);
+				Group = &ChildBuilder.AddGroup(Category, FText::FromString(FName::NameToDisplayString(Category.ToString(), false)), /*bStartExpanded=*/true);
 			}
+			Group->AddPropertyRow(Property).IsEnabled(RowsEnabled);
 		}
 	}
+}
+
+bool FPCGExInlineSettingsCustomization::IsInstancePropertyHidden(const FProperty* InProperty) const
+{
+	if (!InProperty)
+	{
+		return true;
+	}
+
+	const FName PropertyName = InProperty->GetFName();
+	const FName Category = PCGExInlineSettingsCustomization::GetTopCategory(InProperty);
+
+	// Per-value force lists win, property before category; then the plugin's editor settings; then the base-class rule.
+	switch (GetForceState(PropertyName))
+	{
+	case EForceState::Hidden: return true;
+	case EForceState::Shown: return false;
+	default: break;
+	}
+
+	switch (GetForceState(Category))
+	{
+	case EForceState::Hidden: return true;
+	case EForceState::Shown: return false;
+	default: break;
+	}
+
+	const UPCGExInlineSettingsEditorSettings* EditorSettings = GetDefault<UPCGExInlineSettingsEditorSettings>();
+	if (EditorSettings->HiddenProperties.Contains(PropertyName) || EditorSettings->HiddenCategories.Contains(Category))
+	{
+		return true;
+	}
+
+	return EditorSettings->bHideBaseProperties && PCGExInlineSettingsCustomization::IsBaseClassProperty(InProperty) && !EditorSettings->ShownBaseProperties.Contains(PropertyName);
+}
+
+EVisibility FPCGExInlineSettingsCustomization::GetVisibilityMenuVisibility() const
+{
+	return Site == ESite::Definition ? EVisibility::Visible : EVisibility::Collapsed;
+}
+
+TSharedRef<SWidget> FPCGExInlineSettingsCustomization::BuildVisibilityMenu()
+{
+	FMenuBuilder MenuBuilder(/*bInShouldCloseWindowAfterMenuSelection=*/true, nullptr);
+
+	const UPCGSettings* FirstInstance = nullptr;
+	ForEachValue([&FirstInstance](UObject*, FPCGExInlineSettings& Value)
+	{
+		if (!FirstInstance)
+		{
+			FirstInstance = Value.Instance;
+		}
+	});
+
+	if (!FirstInstance)
+	{
+		MenuBuilder.AddMenuEntry(LOCTEXT("NoInstanceForVisibility", "Pick inline settings first."), FText::GetEmpty(), FSlateIcon(), FUIAction(FExecuteAction(), FCanExecuteAction::CreateLambda([] { return false; })));
+		return MenuBuilder.MakeWidget();
+	}
+
+	MenuBuilder.AddSearchWidget();
+
+	struct FCategoryCount
+	{
+		int32 NumShown = 0;
+		int32 NumTotal = 0;
+	};
+
+	TArray<FName> Categories;
+	TMap<FName, FCategoryCount> CategoryCounts;
+	TArray<const FProperty*> Properties;
+	for (TFieldIterator<FProperty> It(FirstInstance->GetClass()); It; ++It)
+	{
+		if (!It->HasAnyPropertyFlags(CPF_Edit))
+		{
+			continue;
+		}
+
+		Properties.Add(*It);
+
+		const FName Category = PCGExInlineSettingsCustomization::GetTopCategory(*It);
+		if (!Category.IsNone())
+		{
+			Categories.AddUnique(Category);
+			FCategoryCount& Count = CategoryCounts.FindOrAdd(Category);
+			++Count.NumTotal;
+			Count.NumShown += IsInstancePropertyHidden(*It) ? 0 : 1;
+		}
+	}
+
+	MenuBuilder.BeginSection(NAME_None, LOCTEXT("CategoriesSection", "Categories"));
+	for (const FName Category : Categories)
+	{
+		const FCategoryCount& Count = CategoryCounts.FindChecked(Category);
+		const bool bLocal = GetForceState(Category) != EForceState::Default;
+		MenuBuilder.AddSubMenu(
+			PCGExInlineSettingsCustomization::MakeVisibilityEntry(
+				FText::FromString(FName::NameToDisplayString(Category.ToString(), false)),
+				PCGExInlineSettingsCustomization::GetVisibilityTooltip(Count.NumShown, Count.NumTotal, bLocal),
+				Count.NumShown, Count.NumTotal, bLocal),
+			FNewMenuDelegate::CreateSP(this, &FPCGExInlineSettingsCustomization::BuildForceStateSubMenu, Category));
+	}
+	MenuBuilder.EndSection();
+
+	MenuBuilder.BeginSection(NAME_None, LOCTEXT("PropertiesSection", "Properties"));
+	for (const FProperty* Property : Properties)
+	{
+		const int32 NumShown = IsInstancePropertyHidden(Property) ? 0 : 1;
+		const bool bLocal = GetForceState(Property->GetFName()) != EForceState::Default;
+		MenuBuilder.AddSubMenu(
+			PCGExInlineSettingsCustomization::MakeVisibilityEntry(
+				Property->GetDisplayNameText(),
+				PCGExInlineSettingsCustomization::GetVisibilityTooltip(NumShown, 1, bLocal),
+				NumShown, 1, bLocal),
+			FNewMenuDelegate::CreateSP(this, &FPCGExInlineSettingsCustomization::BuildForceStateSubMenu, Property->GetFName()));
+	}
+	MenuBuilder.EndSection();
+
+	return MenuBuilder.MakeWidget(nullptr, 500);
+}
+
+void FPCGExInlineSettingsCustomization::BuildForceStateSubMenu(FMenuBuilder& MenuBuilder, FName InName)
+{
+	for (const EForceState State : {EForceState::Default, EForceState::Shown, EForceState::Hidden})
+	{
+		MenuBuilder.AddMenuEntry(
+			PCGExInlineSettingsCustomization::GetForceStateLabel(State),
+			FText::GetEmpty(),
+			FSlateIcon(),
+			FUIAction(
+				FExecuteAction::CreateSP(this, &FPCGExInlineSettingsCustomization::SetForceState, InName, State),
+				FCanExecuteAction(),
+				FGetActionCheckState::CreateSP(this, &FPCGExInlineSettingsCustomization::GetForceCheckState, InName, State)),
+			NAME_None,
+			EUserInterfaceActionType::RadioButton);
+	}
+}
+
+FPCGExInlineSettingsCustomization::EForceState FPCGExInlineSettingsCustomization::GetForceState(FName InName) const
+{
+	// Multi-edit reads the first value: definitions are edited one at a time.
+	EForceState State = EForceState::Default;
+	bool bFirst = true;
+	ForEachValue([InName, &State, &bFirst](UObject*, FPCGExInlineSettings& Value)
+	{
+		if (!bFirst)
+		{
+			return;
+		}
+		bFirst = false;
+
+		if (Value.ForceHidden.Contains(InName))
+		{
+			State = EForceState::Hidden;
+		}
+		else if (Value.ForceShown.Contains(InName))
+		{
+			State = EForceState::Shown;
+		}
+	});
+
+	return State;
+}
+
+ECheckBoxState FPCGExInlineSettingsCustomization::GetForceCheckState(FName InName, EForceState InState) const
+{
+	return GetForceState(InName) == InState ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+}
+
+void FPCGExInlineSettingsCustomization::SetForceState(FName InName, EForceState InState)
+{
+	Commit(
+		LOCTEXT("SetForceStateTransaction", "Set Inline Settings Property Visibility"),
+		[InName, InState](UObject*, FPCGExInlineSettings& Value)
+		{
+			Value.ForceShown.Remove(InName);
+			Value.ForceHidden.Remove(InName);
+			if (InState == EForceState::Shown)
+			{
+				Value.ForceShown.Add(InName);
+			}
+			else if (InState == EForceState::Hidden)
+			{
+				Value.ForceHidden.Add(InName);
+			}
+		});
 }
 
 #undef LOCTEXT_NAMESPACE

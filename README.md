@@ -48,6 +48,9 @@ FPCGExInlineSettings Sampler{UPCGSurfaceSamplerSettings::StaticClass()};
 - **External** takes precedence over the inline instance. Setting it greys the inline properties out.
 - On graph instances and components, inline settings still shared with the parent graph are read-only until you click
   **Make Local Copy**.
+- Which inline properties show is set in **Project Settings > Plugins > PCGEx | Inline Settings** (base PCG node
+  properties hidden except `Seed` by default; extra hidden properties/categories). The eye button on a graph parameter
+  definition overrides that per parameter (always show / always hide, by property or category).
 - Code that edits the struct should use `SetInstance` / `SetExternal` (or call `SyncSettings`) so `Settings` stays in sync.
 - Code that *reads* the struct at execution should call `Resolve()` (the object behind `Settings`, no load) rather than
   `Instance`: PCG's transient override copies carry a nested duplicate in `Instance` while `Settings` keeps the
@@ -57,4 +60,4 @@ FPCGExInlineSettings Sampler{UPCGSurfaceSamplerSettings::StaticClass()};
 
 ## Thanks
 
-Special thanks to [TynannicGoat](https://github.com/orgs/PCGEx/people/mharris382) who keeps having interesting problems to solve
+Special thanks to [TynannicGoat](https://github.com/mharris382) who keeps having interesting problems to solve

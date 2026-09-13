@@ -32,6 +32,16 @@ struct PCGEXINLINESETTINGS_API FPCGExInlineSettingsBase
 	/** Restricts which settings classes can be picked. None allows any settings class. */
 	UPROPERTY(EditAnywhere, Category = "Settings", meta = (PCG_NotOverridable, AllowAbstract))
 	TSubclassOf<UPCGSettings> AllowedClass;
+
+#if WITH_EDITORONLY_DATA
+	/** Property or top-level category names always shown in the inline rows, over the plugin's editor settings. */
+	UPROPERTY(meta = (PCG_NotOverridable))
+	TArray<FName> ForceShown;
+
+	/** Property or top-level category names always hidden in the inline rows, over the plugin's editor settings. */
+	UPROPERTY(meta = (PCG_NotOverridable))
+	TArray<FName> ForceHidden;
+#endif
 };
 
 /**

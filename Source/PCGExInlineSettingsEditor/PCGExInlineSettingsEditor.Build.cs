@@ -25,6 +25,7 @@ public class PCGExInlineSettingsEditor : ModuleRules
 			"PropertyEditor", // RegisterCustomPropertyTypeLayout, SObjectPropertyEntryBox
 			"UnrealEd",       // FScopedTransaction
 			"AssetRegistry",  // Blueprint element discovery, asset rename listener
+			"DeveloperSettings",
 			"PCG",
 		});
 	}

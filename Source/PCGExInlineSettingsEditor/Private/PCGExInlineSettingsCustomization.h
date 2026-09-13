@@ -7,10 +7,12 @@
 #include "IPropertyTypeCustomization.h"
 #include "Input/Reply.h"
 #include "Layout/Visibility.h"
+#include "Styling/SlateTypes.h"
 #include "Templates/SubclassOf.h"
 #include "UObject/SoftObjectPath.h"
 #include "Utils/PCGPreconfiguration.h"
 
+class FMenuBuilder;
 class IDetailChildrenBuilder;
 class IPropertyHandle;
 class IPropertyUtilities;
@@ -32,6 +34,14 @@ public:
 	virtual void CustomizeHeader(TSharedRef<IPropertyHandle> PropertyHandle, FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
 	virtual void CustomizeChildren(TSharedRef<IPropertyHandle> PropertyHandle, IDetailChildrenBuilder& ChildBuilder, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
 	//~ End IPropertyTypeCustomization interface
+
+	/** Per-value show/hide override of the visibility rules, edited on graph parameter definitions. */
+	enum class EForceState : uint8
+	{
+		Default,
+		Shown,
+		Hidden,
+	};
 
 private:
 	/** Where the struct is displayed; decides whether AllowedClass is editable and where it's read from. */
@@ -85,7 +95,16 @@ private:
 	bool ShouldFilterExternalAsset(const FAssetData& InAssetData) const;
 	void OnExternalChanged(const FAssetData& InAssetData);
 
+	/** Instance properties grouped by their top-level category; the host may not create category nodes (struct-rooted panels). */
 	void AddInstanceRows(IDetailChildrenBuilder& ChildBuilder);
+
+	bool IsInstancePropertyHidden(const FProperty* InProperty) const;
+	EVisibility GetVisibilityMenuVisibility() const;
+	TSharedRef<SWidget> BuildVisibilityMenu();
+	void BuildForceStateSubMenu(FMenuBuilder& MenuBuilder, FName InName);
+	EForceState GetForceState(FName InName) const;
+	ECheckBoxState GetForceCheckState(FName InName, EForceState InState) const;
+	void SetForceState(FName InName, EForceState InState);
 
 	TSharedPtr<IPropertyHandle> StructHandle;
 	TSharedPtr<IPropertyHandle> SettingsHandle;
