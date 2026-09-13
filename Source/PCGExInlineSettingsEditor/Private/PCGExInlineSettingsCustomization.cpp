@@ -679,6 +679,8 @@ void FPCGExInlineSettingsCustomization::OnMenuEntryPicked(int32 EntryIndex)
 		FText::Format(LOCTEXT("SetClassTransaction", "Set Inline Settings to {0}"), Entry.Label),
 		[&Entry, SettingsClass, &ElementClass](UObject* Outer, FPCGExInlineSettings& Value)
 		{
+			// The previous instance outlives this call (it only moves to the transient package), so its values can be read.
+			const UPCGSettings* Previous = Value.Instance;
 			PCGExInlineSettingsCustomization::ReleaseOwnedInstance(Outer, Value);
 
 			UPCGSettings* NewInstance = PCGExInlineSettings::CreateInstance(Outer, SettingsClass);
@@ -691,6 +693,12 @@ void FPCGExInlineSettingsCustomization::OnMenuEntryPicked(int32 EntryIndex)
 			{
 				UPCGBlueprintBaseElement* ElementInstance = nullptr;
 				BlueprintSettings->SetBlueprintElementType(ElementClass, ElementInstance);
+			}
+
+			// Before the variant is applied, so a preconfigured value always wins over a carried-over one.
+			if (GetDefault<UPCGExInlineSettingsEditorSettings>()->bKeepEditedValuesOnClassChange)
+			{
+				PCGExInlineSettings::CopyMatchingValues(Previous, NewInstance);
 			}
 
 			if (Entry.Preconfigured.IsSet())

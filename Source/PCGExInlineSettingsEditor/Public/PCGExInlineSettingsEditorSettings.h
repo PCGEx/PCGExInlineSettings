@@ -23,6 +23,10 @@ public:
 	virtual FName GetSectionName() const override { return FName("PCGEx | Inline Settings"); }
 	//~ End UDeveloperSettings interface
 
+	/** When the inline class changes, carry over the edited values whose name and type exist on the new class. */
+	UPROPERTY(EditAnywhere, Config, Category = "Inline Instance")
+	bool bKeepEditedValuesOnClassChange = true;
+
 	/** Hide the properties every PCG node has (debug, asset info, GPU, determinism...), i.e. those declared on UPCGSettings and its bases. */
 	UPROPERTY(EditAnywhere, Config, Category = "Inline Instance")
 	bool bHideBaseProperties = true;
