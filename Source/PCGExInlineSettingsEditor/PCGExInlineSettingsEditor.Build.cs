@@ -22,7 +22,10 @@ public class PCGExInlineSettingsEditor : ModuleRules
 		{
 			"Slate",
 			"SlateCore",
-			"PropertyEditor", // RegisterCustomPropertyTypeLayout
+			"PropertyEditor", // RegisterCustomPropertyTypeLayout, SObjectPropertyEntryBox
+			"UnrealEd",       // FScopedTransaction
+			"AssetRegistry",  // Blueprint element discovery, asset rename listener
+			"PCG",
 		});
 	}
 }
