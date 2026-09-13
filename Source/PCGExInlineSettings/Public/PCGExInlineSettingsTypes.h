@@ -102,4 +102,11 @@ namespace PCGExInlineSettings
 
 	/** Copy of InSource owned by InOuter. Authoring only, game thread. */
 	PCGEXINLINESETTINGS_API UPCGSettings* DuplicateInstance(const UPCGSettings* InSource, UObject* InOuter);
+
+	/**
+	 * Copies InSource's edited values (those differing from its class defaults) onto InTarget wherever a property of the
+	 * same name and type exists. Node plumbing is skipped, instanced sub-objects are duplicated under InTarget, and
+	 * Blueprint element objects are copied the same way. Authoring only, game thread.
+	 */
+	PCGEXINLINESETTINGS_API void CopyMatchingValues(const UObject* InSource, UObject* InTarget);
 }

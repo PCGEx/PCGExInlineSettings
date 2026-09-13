@@ -202,4 +202,56 @@ bool FPCGExInlineSettingsImportTextSyncTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPCGExInlineSettingsCopyMatchingValuesTest, "PCGEx.InlineSettings.CopyMatchingValues", PCGExInlineSettingsTests::Flags)
+
+bool FPCGExInlineSettingsCopyMatchingValuesTest::RunTest(const FString& Parameters)
+{
+	using namespace PCGExInlineSettingsTests;
+
+	UPCGExInlineSettingsTestSettings* Source = NewTestSettings();
+	Source->Shared = 7;
+	Source->Mismatched = 3;
+	Source->Seed = 42;
+	Source->Nested = NewObject<UPCGExInlineSettingsTestSettings>(Source, NAME_None, RF_Transient);
+	Source->Nested->Seed = 99;
+	Source->bEnabled = false;
+	Source->Config.Strength = 9;
+	Source->Config.OnlyA = 4;
+
+	UPCGExInlineSettingsTestSiblingSettings* Target = NewObject<UPCGExInlineSettingsTestSiblingSettings>(GetTransientPackage(), NAME_None, RF_Transient);
+	Target->Config.Scale = 0.5f;
+	const int32 NumOverridableParams = Target->OverridableParams().Num();
+
+	PCGExInlineSettings::CopyMatchingValues(Source, Target);
+
+	TestEqual(TEXT("Config of another type: shared base member carried over"), Target->Config.Strength, 9);
+	TestEqual(TEXT("Config of another type: untouched base member keeps the target's value"), Target->Config.Scale, 0.5f);
+	TestTrue(TEXT("Config of another type: target-only member untouched"), Target->Config.OnlyB == TEXT("Default"));
+
+	TestEqual(TEXT("Same name and type: carried over"), Target->Shared, 7);
+	TestEqual(TEXT("Same name, different type: untouched"), Target->Mismatched, 0.0f);
+	TestEqual(TEXT("Seed: carried over"), Target->Seed, 42);
+	TestTrue(TEXT("Target-only property keeps its default"), Target->OnlyHere == TEXT("Default"));
+	TestTrue(TEXT("Base plumbing (bEnabled) untouched"), Target->bEnabled);
+	TestEqual(TEXT("Cached override params untouched"), Target->OverridableParams().Num(), NumOverridableParams);
+
+	if (TestNotNull(TEXT("Instanced sub-object carried over"), Target->Nested.Get()))
+	{
+		TestTrue(TEXT("Sub-object is a copy owned by the target"), Target->Nested.Get() != Source->Nested.Get() && Target->Nested->GetOuter() == Target);
+		TestEqual(TEXT("Sub-object values copied"), Target->Nested->Seed, 99);
+	}
+
+	// An untouched source value must not override the target's own default, sub-objects included.
+	UPCGExInlineSettingsTestSettings* Untouched = NewTestSettings();
+	UPCGExInlineSettingsTestSiblingSettings* Target2 = NewObject<UPCGExInlineSettingsTestSiblingSettings>(GetTransientPackage(), NAME_None, RF_Transient);
+	Target2->Shared = 5;
+	UPCGSettings* OwnNested = NewObject<UPCGExInlineSettingsTestSettings>(Target2, NAME_None, RF_Transient);
+	Target2->Nested = OwnNested;
+	PCGExInlineSettings::CopyMatchingValues(Untouched, Target2);
+	TestEqual(TEXT("Default source value leaves the target alone"), Target2->Shared, 5);
+	TestTrue(TEXT("Default (null) source sub-object leaves the target's own alone"), Target2->Nested.Get() == OwnNested);
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

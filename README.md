@@ -48,6 +48,9 @@ FPCGExInlineSettings Sampler{UPCGSurfaceSamplerSettings::StaticClass()};
 - **External** takes precedence over the inline instance. Setting it greys the inline properties out.
 - On graph instances and components, inline settings still shared with the parent graph are read-only until you click
   **Make Local Copy**.
+- Picking another class keeps the values you edited whose name and type exist on the new class, walking into structs
+  of a different type (per-class `Config` structs sharing a base) and duplicating instanced sub-objects; a preconfigured
+  variant's own values win. Turn it off in the plugin's editor settings.
 - Which inline properties show is set in **Project Settings > Plugins > PCGEx | Inline Settings** (base PCG node
   properties hidden except `Seed` by default; extra hidden properties/categories). The eye button on a graph parameter
   definition overrides that per parameter (always show / always hide, by property or category).
