@@ -10,7 +10,7 @@
   "DocsURL": "https://github.com/PCGEx/PCGExInlineSettings",
   "SupportURL": "https://discord.gg/mde2vC5gbE",
   "CanContainContent": false,
-  "EngineVersion": "5.8.0",
+  "EngineVersion": "5.7.0",
   "IsBetaVersion": false,
   "Installed": false,
   "Modules": [

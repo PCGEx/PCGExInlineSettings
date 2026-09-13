@@ -65,7 +65,7 @@ void UPCGExProxySettings::PostEditChangeProperty(FPropertyChangedEvent& Property
 		{
 			if (!ExposedPins.ContainsByPredicate([&Pin](const FPCGPinProperties& Exposed) { return Exposed.Label == Pin.Label; }))
 			{
-				UE_LOGF(LogPCG, Warning, "[%ls] Extra input pin '%ls' is ignored: empty, duplicate, or a label the interface or the proxy already uses.", *GetName(), *Pin.Label.ToString());
+				UE_LOG(LogPCG, Warning, TEXT("[%s] Extra input pin '%s' is ignored: empty, duplicate, or a label the interface or the proxy already uses."), *GetName(), *Pin.Label.ToString());
 			}
 		}
 	}

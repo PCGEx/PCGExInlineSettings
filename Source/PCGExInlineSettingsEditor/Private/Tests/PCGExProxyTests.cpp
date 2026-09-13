@@ -34,7 +34,9 @@ namespace PCGExProxyTests
 	UPCGExProxySettings* NewProxy(TSubclassOf<UPCGSettings> InInterfaceClass)
 	{
 		UPCGExProxySettings* Proxy = NewTransient<UPCGExProxySettings>();
-		Proxy->Interface.InitializeAs<FPCGExProxyInterfaceSettings>().InterfaceClass = InInterfaceClass;
+		// 5.7's typed InitializeAs returns void (5.8 returns the struct).
+		Proxy->Interface.InitializeAs<FPCGExProxyInterfaceSettings>();
+		Proxy->Interface.GetMutable<FPCGExProxyInterfaceSettings>().InterfaceClass = InInterfaceClass;
 		return Proxy;
 	}
 

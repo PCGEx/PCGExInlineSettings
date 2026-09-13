@@ -18,6 +18,7 @@
 #include "AssetRegistry/AssetRegistryHelpers.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
+#include "Blueprint/BlueprintSupport.h"
 #include "Engine/Blueprint.h"
 #include "Framework/Commands/UIAction.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
@@ -45,7 +46,6 @@
 #include "Elements/PCGReroute.h"
 #include "Elements/PCGUserParameterGet.h"
 #include "Elements/Blueprint/PCGBlueprintBaseElement.h"
-#include "Helpers/PCGAssetHelpers.h"
 
 #include "PCGExInlineSettingsEditorSettings.h"
 #include "PCGExInlineSettingsTypes.h"
@@ -205,6 +205,26 @@ namespace PCGExInlineSettingsCustomization
 		const IAssetRegistry* AssetRegistry = IAssetRegistry::Get();
 		const FAssetData AssetData = AssetRegistry ? AssetRegistry->GetAssetByObjectPath(InPath) : FAssetData();
 		return AssetData.IsValid() ? AssetData.GetClass() : nullptr;
+	}
+
+	// 5.7 has no FPCGAssetHelpers: the same registry tags the PCG palette reads, in the 5.8 helper's shape.
+	struct FBlueprintAssetOutput
+	{
+		FText Category;
+		FText Description;
+		FSoftClassPath GeneratedClass;
+		bool bOnlyExposePreconfiguredSettings = false;
+		bool bEnabledPreconfiguredSettings = false;
+	};
+
+	bool GetBlueprintAssetRegistryData(const FAssetData& InAssetData, FBlueprintAssetOutput& OutOutput)
+	{
+		OutOutput.GeneratedClass = FSoftClassPath(InAssetData.GetTagValueRef<FString>(FBlueprintTags::GeneratedClassPath));
+		OutOutput.Category = InAssetData.GetTagValueRef<FText>(GET_MEMBER_NAME_CHECKED(UPCGBlueprintBaseElement, Category));
+		OutOutput.Description = InAssetData.GetTagValueRef<FText>(GET_MEMBER_NAME_CHECKED(UPCGBlueprintBaseElement, Description));
+		OutOutput.bOnlyExposePreconfiguredSettings = InAssetData.GetTagValueRef<bool>(GET_MEMBER_NAME_CHECKED(UPCGBlueprintBaseElement, bOnlyExposePreconfiguredSettings));
+		OutOutput.bEnabledPreconfiguredSettings = InAssetData.GetTagValueRef<bool>(GET_MEMBER_NAME_CHECKED(UPCGBlueprintBaseElement, bEnablePreconfiguredSettings));
+		return true;
 	}
 
 	// A replaced instance owned by this outer leaves its package (undoable); a shared one belongs to another object.
@@ -603,8 +623,8 @@ void FPCGExInlineSettingsCustomization::GatherBlueprintElementEntries(const FTex
 			return true;
 		}
 
-		FPCGAssetHelpers::FBlueprintAssetOutput AssetOutput;
-		if (!FPCGAssetHelpers::GetBlueprintAssetRegistryData(AssetData, AssetOutput))
+		PCGExInlineSettingsCustomization::FBlueprintAssetOutput AssetOutput;
+		if (!PCGExInlineSettingsCustomization::GetBlueprintAssetRegistryData(AssetData, AssetOutput))
 		{
 			return true;
 		}
@@ -663,7 +683,7 @@ void FPCGExInlineSettingsCustomization::OnMenuEntryPicked(int32 EntryIndex)
 		ElementClass = Entry.BlueprintElementClass.TryLoadClass<UPCGBlueprintBaseElement>();
 		if (!ElementClass)
 		{
-			UE_LOGF(LogTemp, Warning, "PCGExInlineSettings: could not load Blueprint element '%ls'.", *Entry.BlueprintElementClass.ToString());
+			UE_LOG(LogTemp, Warning, TEXT("PCGExInlineSettings: could not load Blueprint element '%s'."), *Entry.BlueprintElementClass.ToString());
 			return;
 		}
 

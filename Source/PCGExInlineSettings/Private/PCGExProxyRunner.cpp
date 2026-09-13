@@ -202,7 +202,14 @@ namespace PCGExProxy
 		ForEachObjectWithOuter(InObject, [](UObject* SubObject)
 		{
 			SubObject->ClearInternalFlags(EInternalObjectFlags::Async);
-		}, EGetObjectsFlags::IncludeNestedObjects);
+		}, /*bIncludeNestedObjects=*/true);
+	}
+
+	// 5.7 has no GetMutableInputSettings: the override copy is what GetInputSettings returns when it is not the original.
+	const UPCGSettings* GetOverrideSettings(const FPCGContext& InContext)
+	{
+		const UPCGSettings* Settings = InContext.GetInputSettings<UPCGSettings>();
+		return Settings != InContext.GetOriginalSettings<UPCGSettings>() ? Settings : nullptr;
 	}
 }
 
@@ -391,7 +398,7 @@ void FPCGExProxyInlineRunner::RefreshSnapshot()
 		Gather(Cached.Key);
 		Gather(Cached.Value);
 	}
-	if (const UPCGSettings* OverrideSettings = InnerContext->GetMutableInputSettings<UPCGSettings>())
+	if (const UPCGSettings* OverrideSettings = PCGExProxy::GetOverrideSettings(*InnerContext))
 	{
 		NewSnapshot.Add(OverrideSettings);
 	}
@@ -452,7 +459,7 @@ void FPCGExProxyInlineRunner::CopyOutput(FPCGExProxyContext& Context)
 			AsyncCleanup.AddUnique(Data);
 		}
 	}
-	if (const UPCGSettings* OverrideSettings = InnerContext->GetMutableInputSettings<UPCGSettings>())
+	if (const UPCGSettings* OverrideSettings = PCGExProxy::GetOverrideSettings(*InnerContext))
 	{
 		if (OverrideSettings->HasAnyInternalFlags(EInternalObjectFlags::Async))
 		{
