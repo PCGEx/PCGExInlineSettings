@@ -74,13 +74,13 @@ protected:
 	//~ End UPCGSettings interface
 
 public:
-	/** Settings run by the proxy. Overridable: feed it the Settings path of an inline settings graph parameter. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", meta = (PCG_Overridable))
-	TObjectPtr<UPCGSettings> Settings;
-
 	/** Where the node's pins come from and which settings it accepts. */
 	UPROPERTY(EditAnywhere, NoClear, Category = "Settings", meta = (PCG_NotOverridable, ExcludeBaseStruct))
 	TInstancedStruct<FPCGExProxyInterface> Interface;
+	
+	/** Settings run by the proxy. Overridable: feed it the Settings path of an inline settings graph parameter. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", meta = (PCG_Overridable))
+	TObjectPtr<UPCGSettings> Settings;
 
 	/** Extra input pins, forwarded to the inner settings' pin of the same label when the data type fits. Labels used by the interface or the proxy are ignored. */
 	UPROPERTY(EditAnywhere, Category = "Settings", meta = (PCG_NotOverridable, TitleProperty = "{Label}"))
