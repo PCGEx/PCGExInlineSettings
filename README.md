@@ -51,9 +51,12 @@ FPCGExInlineSettings Sampler{UPCGSurfaceSamplerSettings::StaticClass()};
 - Picking another class keeps the values you edited whose name and type exist on the new class, walking into structs
   of a different type (per-class `Config` structs sharing a base) and duplicating instanced sub-objects; a preconfigured
   variant's own values win. Turn it off in the plugin's editor settings.
-- Which inline properties show is set in **Project Settings > Plugins > PCGEx | Inline Settings** (base PCG node
-  properties hidden except `Seed` by default; extra hidden properties/categories). The eye button on a graph parameter
-  definition overrides that per parameter (always show / always hide, by property or category).
+- Which inline properties graph instances and components see is set in **Project Settings > Plugins > PCGEx | Inline
+  Settings** (base PCG node properties hidden except `Seed` by default; extra hidden properties/categories). The eye
+  button on a graph parameter definition overrides that per parameter (always show / always hide, by property or
+  category). The definition itself always shows every user value, so hidden ones can still be authored as defaults.
+- The lock button on a definition locks the picked class: instances and components can then edit its values but not
+  pick another class; External stays overridable there. Clearing the pick unlocks.
 - Code that edits the struct should use `SetInstance` / `SetExternal` (or call `SyncSettings`) so `Settings` stays in sync.
 - Code that *reads* the struct at execution should call `Resolve()` (the object behind `Settings`, no load) rather than
   `Instance`: PCG's transient override copies carry a nested duplicate in `Instance` while `Settings` keeps the
