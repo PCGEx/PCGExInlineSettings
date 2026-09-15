@@ -14,6 +14,7 @@
 
 class FMenuBuilder;
 class IDetailChildrenBuilder;
+struct FSlateBrush;
 class IPropertyHandle;
 class IPropertyUtilities;
 class SWidget;
@@ -64,8 +65,21 @@ private:
 
 	ESite DetectSite() const;
 
+	/** The graph parameter definition's value when this is a top-level parameter override; null elsewhere. */
+	const FPCGExInlineSettings* GetDefinitionValue() const;
+
 	/** Allowed class in effect here: the definition's value at override sites, the local value elsewhere. */
 	UClass* GetEffectiveAllowedClass() const;
+
+	/** Class lock in effect here: the definition's flag at override sites, the local flag elsewhere. */
+	bool IsClassLocked() const;
+	bool HasInstance() const;
+	EVisibility GetLockVisibility() const;
+	bool IsLockEnabled() const;
+	ECheckBoxState GetLockCheckState() const;
+	const FSlateBrush* GetLockBrush() const;
+	FText GetLockTooltip() const;
+	void OnLockChanged(ECheckBoxState InState);
 
 	/** Calls Func for each edited value with the object that owns it. */
 	void ForEachValue(TFunctionRef<void(UObject* Outer, FPCGExInlineSettings& Value)> Func) const;
@@ -76,7 +90,8 @@ private:
 	bool IsValueEditable() const;
 	bool HasExternal() const;
 	bool HasSharedInstance() const;
-	bool CanPickClass() const;
+	/** The class may change: editable, not locked by the definition (override sites). External is never locked. */
+	bool IsClassPickable() const;
 	bool IsInlineEditable() const;
 
 	TSharedRef<SWidget> BuildClassMenu();
@@ -98,7 +113,8 @@ private:
 	/** Instance properties grouped by their top-level category; the host may not create category nodes (struct-rooted panels). */
 	void AddInstanceRows(IDetailChildrenBuilder& ChildBuilder);
 
-	bool IsInstancePropertyHidden(const FProperty* InProperty) const;
+	/** Visibility rules apply to instances (override sites); definitions and owners keep every user value editable as a default. */
+	bool IsInstancePropertyHidden(const FProperty* InProperty, bool bForInstances) const;
 	EVisibility GetVisibilityMenuVisibility() const;
 	TSharedRef<SWidget> BuildVisibilityMenu();
 	void BuildForceStateSubMenu(FMenuBuilder& MenuBuilder, FName InName);

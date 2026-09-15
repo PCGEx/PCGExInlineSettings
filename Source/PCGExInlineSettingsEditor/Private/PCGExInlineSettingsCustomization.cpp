@@ -31,6 +31,7 @@
 #include "UObject/UObjectIterator.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
@@ -178,8 +179,8 @@ namespace PCGExInlineSettingsCustomization
 	FText GetVisibilityTooltip(const int32 InNumShown, const int32 InNumTotal, const bool bInLocalOverride)
 	{
 		const FText State = InNumShown == 0
-			? LOCTEXT("StateHidden", "Hidden")
-			: (InNumShown < InNumTotal ? FText::Format(LOCTEXT("StatePartial", "{0} of {1} shown"), InNumShown, InNumTotal) : LOCTEXT("StateShown", "Shown"));
+			? LOCTEXT("StateHidden", "Hidden on instances")
+			: (InNumShown < InNumTotal ? FText::Format(LOCTEXT("StatePartial", "{0} of {1} shown on instances"), InNumShown, InNumTotal) : LOCTEXT("StateShown", "Shown on instances"));
 		return bInLocalOverride ? FText::Format(LOCTEXT("StateWithLocal", "{0} (local override)"), State) : State;
 	}
 
@@ -252,7 +253,7 @@ void FPCGExInlineSettingsCustomization::CustomizeHeader(TSharedRef<IPropertyHand
 			.VAlign(VAlign_Center)
 			[
 				SNew(SComboButton)
-				.IsEnabled(this, &FPCGExInlineSettingsCustomization::CanPickClass)
+				.IsEnabled(this, &FPCGExInlineSettingsCustomization::IsClassPickable)
 				.ToolTipText(this, &FPCGExInlineSettingsCustomization::GetClassTooltip)
 				.OnGetMenuContent(this, &FPCGExInlineSettingsCustomization::BuildClassMenu)
 				.ButtonContent()
@@ -277,9 +278,30 @@ void FPCGExInlineSettingsCustomization::CustomizeHeader(TSharedRef<IPropertyHand
 			.VAlign(VAlign_Center)
 			.Padding(4.0f, 0.0f, 0.0f, 0.0f)
 			[
+				// Toggled on definitions; shown read-only on instances so a disabled picker explains itself.
+				SNew(SCheckBox)
+				.Style(&FAppStyle::Get().GetWidgetStyle<FCheckBoxStyle>("ToggleButtonCheckbox"))
+				.Padding(FMargin(4.0f, 2.0f))
+				.ToolTipText(this, &FPCGExInlineSettingsCustomization::GetLockTooltip)
+				.Visibility(this, &FPCGExInlineSettingsCustomization::GetLockVisibility)
+				.IsEnabled(this, &FPCGExInlineSettingsCustomization::IsLockEnabled)
+				.IsChecked(this, &FPCGExInlineSettingsCustomization::GetLockCheckState)
+				.OnCheckStateChanged(this, &FPCGExInlineSettingsCustomization::OnLockChanged)
+				[
+					SNew(SImage)
+					.DesiredSizeOverride(FVector2D(14.0f, 14.0f))
+					.Image(this, &FPCGExInlineSettingsCustomization::GetLockBrush)
+					.ColorAndOpacity(FSlateColor::UseForeground())
+				]
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(4.0f, 0.0f, 0.0f, 0.0f)
+			[
 				SNew(SComboButton)
 				.HasDownArrow(false)
-				.ToolTipText(LOCTEXT("VisibilityMenuTooltip", "Choose which inline properties are shown or hidden here, over the plugin's editor settings."))
+				.ToolTipText(LOCTEXT("VisibilityMenuTooltip", "Choose which inline properties graph instances and components see, over the plugin's editor settings. The definition always shows them all, as defaults."))
 				.Visibility(this, &FPCGExInlineSettingsCustomization::GetVisibilityMenuVisibility)
 				.OnGetMenuContent(this, &FPCGExInlineSettingsCustomization::BuildVisibilityMenu)
 				.ButtonContent()
@@ -357,36 +379,48 @@ FPCGExInlineSettingsCustomization::ESite FPCGExInlineSettingsCustomization::Dete
 	return ESite::Owner;
 }
 
+const FPCGExInlineSettings* FPCGExInlineSettingsCustomization::GetDefinitionValue() const
+{
+	// Override sites read the definition: an overridden local copy keeps whatever it was copied with.
+	if (Site != ESite::Override)
+	{
+		return nullptr;
+	}
+
+	const FProperty* ParameterProperty = StructHandle->GetProperty();
+	if (!ParameterProperty || !Cast<UPropertyBag>(ParameterProperty->GetOwnerStruct()))
+	{
+		return nullptr;
+	}
+
+	TArray<UObject*> Outers;
+	StructHandle->GetOuterObjects(Outers);
+
+	for (const UObject* Outer : Outers)
+	{
+		const UPCGGraphInstance* GraphInstance = Cast<UPCGGraphInstance>(Outer);
+		const UPCGGraph* Graph = GraphInstance ? GraphInstance->GetGraph() : nullptr;
+		const FInstancedPropertyBag* Parameters = Graph ? Graph->GetUserParametersStruct() : nullptr;
+		if (!Parameters)
+		{
+			continue;
+		}
+
+		const TValueOrError<FPCGExInlineSettings*, EPropertyBagResult> Definition = Parameters->GetValueStruct<FPCGExInlineSettings>(ParameterProperty->GetFName());
+		if (Definition.HasValue() && Definition.GetValue())
+		{
+			return Definition.GetValue();
+		}
+	}
+
+	return nullptr;
+}
+
 UClass* FPCGExInlineSettingsCustomization::GetEffectiveAllowedClass() const
 {
-	// Override sites read the definition: an overridden local copy keeps whatever allowed class it was copied with.
-	if (Site == ESite::Override)
+	if (const FPCGExInlineSettings* Definition = GetDefinitionValue())
 	{
-		const FProperty* ParameterProperty = StructHandle->GetProperty();
-		const bool bIsTopLevelParameter = ParameterProperty && Cast<UPropertyBag>(ParameterProperty->GetOwnerStruct());
-
-		if (bIsTopLevelParameter)
-		{
-			TArray<UObject*> Outers;
-			StructHandle->GetOuterObjects(Outers);
-
-			for (const UObject* Outer : Outers)
-			{
-				const UPCGGraphInstance* GraphInstance = Cast<UPCGGraphInstance>(Outer);
-				const UPCGGraph* Graph = GraphInstance ? GraphInstance->GetGraph() : nullptr;
-				const FInstancedPropertyBag* Parameters = Graph ? Graph->GetUserParametersStruct() : nullptr;
-				if (!Parameters)
-				{
-					continue;
-				}
-
-				const TValueOrError<FPCGExInlineSettings*, EPropertyBagResult> Definition = Parameters->GetValueStruct<FPCGExInlineSettings>(ParameterProperty->GetFName());
-				if (Definition.HasValue() && Definition.GetValue())
-				{
-					return Definition.GetValue()->AllowedClass.Get();
-				}
-			}
-		}
+		return Definition->AllowedClass.Get();
 	}
 
 	UClass* LocalAllowedClass = nullptr;
@@ -473,14 +507,75 @@ bool FPCGExInlineSettingsCustomization::HasSharedInstance() const
 	return bHasShared;
 }
 
-bool FPCGExInlineSettingsCustomization::CanPickClass() const
+bool FPCGExInlineSettingsCustomization::IsClassPickable() const
 {
-	return IsValueEditable() && !HasExternal();
+	return IsValueEditable() && !(Site == ESite::Override && IsClassLocked());
 }
 
 bool FPCGExInlineSettingsCustomization::IsInlineEditable() const
 {
-	return CanPickClass() && !HasSharedInstance();
+	return IsValueEditable() && !HasExternal() && !HasSharedInstance();
+}
+
+bool FPCGExInlineSettingsCustomization::IsClassLocked() const
+{
+	if (const FPCGExInlineSettings* Definition = GetDefinitionValue())
+	{
+		return Definition->bLockClass;
+	}
+
+	bool bLocked = false;
+	ForEachValue([&bLocked](UObject*, FPCGExInlineSettings& Value) { bLocked |= Value.bLockClass; });
+	return bLocked;
+}
+
+bool FPCGExInlineSettingsCustomization::HasInstance() const
+{
+	bool bHasInstance = false;
+	ForEachValue([&bHasInstance](UObject*, FPCGExInlineSettings& Value) { bHasInstance |= Value.Instance != nullptr; });
+	return bHasInstance;
+}
+
+EVisibility FPCGExInlineSettingsCustomization::GetLockVisibility() const
+{
+	return Site == ESite::Definition || (Site == ESite::Override && IsClassLocked()) ? EVisibility::Visible : EVisibility::Collapsed;
+}
+
+bool FPCGExInlineSettingsCustomization::IsLockEnabled() const
+{
+	// Nothing to lock without a concrete pick; instances only see the state.
+	return Site == ESite::Definition && IsValueEditable() && HasInstance() && !HasExternal();
+}
+
+ECheckBoxState FPCGExInlineSettingsCustomization::GetLockCheckState() const
+{
+	return IsClassLocked() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+}
+
+const FSlateBrush* FPCGExInlineSettingsCustomization::GetLockBrush() const
+{
+	return FAppStyle::GetBrush(IsClassLocked() ? TEXT("Icons.Lock") : TEXT("Icons.Unlock"));
+}
+
+FText FPCGExInlineSettingsCustomization::GetLockTooltip() const
+{
+	if (Site == ESite::Override)
+	{
+		return LOCTEXT("LockedOnInstanceTooltip", "The class is locked by the graph parameter definition: edit its values here, or point External at an asset.");
+	}
+
+	return LOCTEXT("LockClassTooltip", "Lock the picked class: graph instances and components keep it and edit its values (External stays free). Unlocked, they may pick another class.");
+}
+
+void FPCGExInlineSettingsCustomization::OnLockChanged(ECheckBoxState InState)
+{
+	const bool bLocked = InState == ECheckBoxState::Checked;
+	Commit(
+		bLocked ? LOCTEXT("LockClassTransaction", "Lock Inline Settings Class") : LOCTEXT("UnlockClassTransaction", "Unlock Inline Settings Class"),
+		[bLocked](UObject*, FPCGExInlineSettings& Value)
+		{
+			Value.bLockClass = bLocked;
+		});
 }
 
 TSharedRef<SWidget> FPCGExInlineSettingsCustomization::BuildClassMenu()
@@ -717,6 +812,8 @@ void FPCGExInlineSettingsCustomization::OnClearPicked()
 		[](UObject* Outer, FPCGExInlineSettings& Value)
 		{
 			PCGExInlineSettingsCustomization::ReleaseOwnedInstance(Outer, Value);
+			// A lock with nothing picked would leave instances unable to pick anything.
+			Value.bLockClass = false;
 		});
 }
 
@@ -886,7 +983,7 @@ void FPCGExInlineSettingsCustomization::AddInstanceRows(IDetailChildrenBuilder& 
 		TMap<FName, IDetailGroup*> Groups;
 		for (const TSharedRef<IPropertyHandle>& Property : Properties)
 		{
-			if (IsInstancePropertyHidden(Property->GetProperty()))
+			if (IsInstancePropertyHidden(Property->GetProperty(), Site == ESite::Override))
 			{
 				continue;
 			}
@@ -908,7 +1005,7 @@ void FPCGExInlineSettingsCustomization::AddInstanceRows(IDetailChildrenBuilder& 
 	}
 }
 
-bool FPCGExInlineSettingsCustomization::IsInstancePropertyHidden(const FProperty* InProperty) const
+bool FPCGExInlineSettingsCustomization::IsInstancePropertyHidden(const FProperty* InProperty, const bool bForInstances) const
 {
 	if (!InProperty)
 	{
@@ -917,6 +1014,14 @@ bool FPCGExInlineSettingsCustomization::IsInstancePropertyHidden(const FProperty
 
 	const FName PropertyName = InProperty->GetFName();
 	const FName Category = PCGExInlineSettingsCustomization::GetTopCategory(InProperty);
+	const UPCGExInlineSettingsEditorSettings* EditorSettings = GetDefault<UPCGExInlineSettingsEditorSettings>();
+
+	// Node plumbing is never a default worth authoring; everything below only narrows what instances see.
+	const bool bBaseHidden = EditorSettings->bHideBaseProperties && PCGExInlineSettingsCustomization::IsBaseClassProperty(InProperty) && !EditorSettings->ShownBaseProperties.Contains(PropertyName);
+	if (!bForInstances)
+	{
+		return bBaseHidden;
+	}
 
 	// Per-value force lists win, property before category; then the plugin's editor settings; then the base-class rule.
 	switch (GetForceState(PropertyName))
@@ -933,13 +1038,12 @@ bool FPCGExInlineSettingsCustomization::IsInstancePropertyHidden(const FProperty
 	default: break;
 	}
 
-	const UPCGExInlineSettingsEditorSettings* EditorSettings = GetDefault<UPCGExInlineSettingsEditorSettings>();
 	if (EditorSettings->HiddenProperties.Contains(PropertyName) || EditorSettings->HiddenCategories.Contains(Category))
 	{
 		return true;
 	}
 
-	return EditorSettings->bHideBaseProperties && PCGExInlineSettingsCustomization::IsBaseClassProperty(InProperty) && !EditorSettings->ShownBaseProperties.Contains(PropertyName);
+	return bBaseHidden;
 }
 
 EVisibility FPCGExInlineSettingsCustomization::GetVisibilityMenuVisibility() const
@@ -992,7 +1096,7 @@ TSharedRef<SWidget> FPCGExInlineSettingsCustomization::BuildVisibilityMenu()
 			Categories.AddUnique(Category);
 			FCategoryCount& Count = CategoryCounts.FindOrAdd(Category);
 			++Count.NumTotal;
-			Count.NumShown += IsInstancePropertyHidden(*It) ? 0 : 1;
+			Count.NumShown += IsInstancePropertyHidden(*It, /*bForInstances=*/true) ? 0 : 1;
 		}
 	}
 
@@ -1013,7 +1117,7 @@ TSharedRef<SWidget> FPCGExInlineSettingsCustomization::BuildVisibilityMenu()
 	MenuBuilder.BeginSection(NAME_None, LOCTEXT("PropertiesSection", "Properties"));
 	for (const FProperty* Property : Properties)
 	{
-		const int32 NumShown = IsInstancePropertyHidden(Property) ? 0 : 1;
+		const int32 NumShown = IsInstancePropertyHidden(Property, /*bForInstances=*/true) ? 0 : 1;
 		const bool bLocal = GetForceState(Property->GetFName()) != EForceState::Default;
 		MenuBuilder.AddSubMenu(
 			PCGExInlineSettingsCustomization::MakeVisibilityEntry(

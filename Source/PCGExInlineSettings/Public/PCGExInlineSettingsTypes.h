@@ -33,6 +33,10 @@ struct PCGEXINLINESETTINGS_API FPCGExInlineSettingsBase
 	UPROPERTY(EditAnywhere, Category = "Settings", meta = (PCG_NotOverridable, AllowAbstract))
 	TSubclassOf<UPCGSettings> AllowedClass;
 
+	/** Definition-authored: graph instances and components keep the picked class and can only edit its values. */
+	UPROPERTY(meta = (PCG_NotOverridable))
+	bool bLockClass = false;
+
 #if WITH_EDITORONLY_DATA
 	/** Property or top-level category names always shown in the inline rows, over the plugin's editor settings. */
 	UPROPERTY(meta = (PCG_NotOverridable))
