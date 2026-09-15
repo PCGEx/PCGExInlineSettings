@@ -17,6 +17,16 @@ namespace PCGExProxy
 {
 	const FName InterfaceMetaKey(TEXT("PCGExProxyInterface"));
 
+	// UField::GetDisplayNameText is editor-only data; cooked builds get the class name.
+	FText GetClassDisplayName(const UClass* InClass)
+	{
+#if WITH_EDITOR
+		return InClass->GetDisplayNameText();
+#else
+		return FText::FromString(InClass->GetName());
+#endif
+	}
+
 #if WITH_EDITOR
 	bool IsInterfaceClass(const UClass* InClass)
 	{
@@ -111,7 +121,7 @@ bool FPCGExProxyInterfaceSettings::Validate(const UPCGSettings* InSettings, FTex
 
 	if (InterfaceClass && !InSettings->GetClass()->IsChildOf(InterfaceClass))
 	{
-		OutError = FText::Format(LOCTEXT("ClassMismatch", "Settings '{0}' are not a '{1}'."), FText::FromName(InSettings->GetFName()), InterfaceClass->GetDisplayNameText());
+		OutError = FText::Format(LOCTEXT("ClassMismatch", "Settings '{0}' are not a '{1}'."), FText::FromName(InSettings->GetFName()), PCGExProxy::GetClassDisplayName(InterfaceClass));
 		return false;
 	}
 
@@ -176,7 +186,7 @@ bool FPCGExProxyInterfaceBlueprint::Validate(const UPCGSettings* InSettings, FTe
 
 	if (ElementClass && !ElementType->IsChildOf(ElementClass))
 	{
-		OutError = FText::Format(LOCTEXT("ElementMismatch", "Blueprint element '{0}' is not a '{1}'."), ElementType->GetDisplayNameText(), ElementClass->GetDisplayNameText());
+		OutError = FText::Format(LOCTEXT("ElementMismatch", "Blueprint element '{0}' is not a '{1}'."), PCGExProxy::GetClassDisplayName(ElementType), PCGExProxy::GetClassDisplayName(ElementClass));
 		return false;
 	}
 
@@ -187,11 +197,7 @@ FString FPCGExProxyInterfaceBlueprint::GetTitle(const UPCGSettings* InAuthoredSe
 {
 	if (const UClass* Class = ElementClass.Get())
 	{
-#if WITH_EDITOR
-		return Class->GetDisplayNameText().ToString();
-#else
-		return Class->GetName();
-#endif
+		return PCGExProxy::GetClassDisplayName(Class).ToString();
 	}
 
 	return FPCGExProxyInterface::GetTitle(InAuthoredSettings);

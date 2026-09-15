@@ -137,6 +137,7 @@ namespace PCGExInlineSettings
 		return Cast<UPCGSettings>(StaticDuplicateObjectEx(Params));
 	}
 
+#if WITH_EDITOR
 	// Node plumbing every settings class carries (debug, asset info, GPU, cached override params); Seed is the exception.
 	bool IsSettingsPlumbing(const FProperty* InProperty)
 	{
@@ -295,4 +296,5 @@ namespace PCGExInlineSettings
 			CopyMatchingValues(SourceBlueprint->GetElementObject(), TargetBlueprint->GetElementObject());
 		}
 	}
+#endif // WITH_EDITOR
 }
