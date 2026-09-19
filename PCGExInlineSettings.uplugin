@@ -1,7 +1,7 @@
 {
   "FileVersion": 3,
   "Version": 1,
-  "VersionName": "1.0.0",
+  "VersionName": "1.1.0",
   "FriendlyName": "PCGEx | Inline Settings",
   "Description": "Inline, instanced PCG settings. Hosts an instance of any non-abstract PCG settings class inside a small struct, and exposes it to graphs as a soft object path so it can be used as a graph parameter.",
   "Category": "PCG",
