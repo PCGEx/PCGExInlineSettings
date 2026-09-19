@@ -35,6 +35,12 @@ namespace PCGExInlineSettingsTests
 		return NewObject<UPCGExInlineSettingsTestSettings>(GetTransientPackage(), NAME_None, RF_Transient);
 	}
 
+	/** Owner outside the transient package, where Resolve prefers the owned instance over the Settings path. */
+	UPCGExInlineSettingsTestSettings* NewPackagedTestSettings()
+	{
+		return NewObject<UPCGExInlineSettingsTestSettings>(CreatePackage(TEXT("/Temp/PCGExInlineSettingsTests")), NAME_None, RF_Transient);
+	}
+
 	TArray<const FPCGSettingsOverridableParam*> FindParams(const UPCGSettings* InSettings, const FName InRootName)
 	{
 		TArray<const FPCGSettingsOverridableParam*> Params;
@@ -250,6 +256,72 @@ bool FPCGExInlineSettingsCopyMatchingValuesTest::RunTest(const FString& Paramete
 	PCGExInlineSettings::CopyMatchingValues(Untouched, Target2);
 	TestEqual(TEXT("Default source value leaves the target alone"), Target2->Shared, 5);
 	TestTrue(TEXT("Default (null) source sub-object leaves the target's own alone"), Target2->Nested.Get() == OwnNested);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPCGExInlineSettingsResolveStalePathTest, "PCGEx.InlineSettings.Resolve.StalePath", PCGExInlineSettingsTests::Flags)
+
+bool FPCGExInlineSettingsResolveStalePathTest::RunTest(const FString& Parameters)
+{
+	using namespace PCGExInlineSettingsTests;
+
+	UPCGExInlineSettingsTestSettings* Archetype = NewPackagedTestSettings();
+	Archetype->Inline.SetInstance(PCGExInlineSettings::CreateInstance(Archetype, UPCGExInlineSettingsTestSettings::StaticClass()));
+
+	TestTrue(TEXT("An in-sync value resolves to its own instance"), Archetype->Inline.Resolve() == Archetype->Inline.Instance);
+
+	// Subobject instancing hands a spawned instance its own copy but never re-derives the path.
+	UPCGExInlineSettingsTestSettings* Spawned = NewPackagedTestSettings();
+	Spawned->Inline.Instance = PCGExInlineSettings::CreateInstance(Spawned, UPCGExInlineSettingsTestSettings::StaticClass());
+	Spawned->Inline.Settings = FSoftObjectPath(Archetype->Inline.Instance);
+
+	// RF_Transient propagates to subobjects, so the execution-copy carve-out must test the package, not the flag.
+	if (!TestTrue(TEXT("Precondition: the spawned instance carries RF_Transient"), Spawned->Inline.Instance->HasAnyFlags(RF_Transient)))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("Resolve returns the holder's own instance, not the archetype's"), Spawned->Inline.Resolve() == Spawned->Inline.Instance);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPCGExInlineSettingsResolveExecutionCopyTest, "PCGEx.InlineSettings.Resolve.ExecutionCopy", PCGExInlineSettingsTests::Flags)
+
+bool FPCGExInlineSettingsResolveExecutionCopyTest::RunTest(const FString& Parameters)
+{
+	using namespace PCGExInlineSettingsTests;
+
+	UPCGExInlineSettingsTestSettings* Persistent = NewPackagedTestSettings();
+	const UPCGSettings* Overridden = PCGExInlineSettings::CreateInstance(Persistent, UPCGExInlineSettingsTestSettings::StaticClass());
+
+	// Shape of a PCG execution copy: holder and nested instance duplicated into the transient package, Settings left
+	// carrying the path an override pin wrote.
+	UPCGExInlineSettingsTestSettings* Copy = NewTestSettings();
+	Copy->Inline.Instance = PCGExInlineSettings::CreateInstance(Copy, UPCGExInlineSettingsTestSettings::StaticClass());
+	Copy->Inline.Settings = FSoftObjectPath(Overridden);
+
+	TestTrue(TEXT("Resolve honours the overridden path inside an execution copy"), Copy->Inline.Resolve() == Overridden);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPCGExInlineSettingsResolveExternalTest, "PCGEx.InlineSettings.Resolve.External", PCGExInlineSettingsTests::Flags)
+
+bool FPCGExInlineSettingsResolveExternalTest::RunTest(const FString& Parameters)
+{
+	using namespace PCGExInlineSettingsTests;
+
+	UPCGExInlineSettingsTestSettings* Owner = NewPackagedTestSettings();
+	UPCGSettings* Referenced = PCGExInlineSettings::CreateInstance(Owner, UPCGExInlineSettingsTestSettings::StaticClass());
+
+	FPCGExInlineSettings Value;
+	Value.SetInstance(PCGExInlineSettings::CreateInstance(Owner, UPCGExInlineSettingsTestSettings::StaticClass()));
+	Value.SetExternal(TSoftObjectPtr<UPCGSettings>(Referenced));
+
+	TestTrue(TEXT("Settings follows the external reference"), Value.Settings == FSoftObjectPath(Referenced));
+	TestTrue(TEXT("Resolve returns the external reference over a leftover instance"), Value.Resolve() == Referenced);
 
 	return true;
 }

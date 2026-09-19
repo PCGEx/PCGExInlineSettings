@@ -50,6 +50,14 @@ void FPCGExInlineSettings::SetExternal(const TSoftObjectPtr<UPCGSettings>& InExt
 
 UPCGSettings* FPCGExInlineSettings::Resolve() const
 {
+	// Settings is derived state, and subobject instancing moves the instance without re-running SyncSettings: on a
+	// spawned Blueprint instance the path still addresses the archetype's copy. PCG's execution copy is the one holder
+	// where the path wins - it is duplicated into the transient package, and PCG writes its overrides onto Settings.
+	if (!IsExternal() && Instance && !Instance->IsIn(GetTransientPackage()))
+	{
+		return Instance;
+	}
+
 	return Cast<UPCGSettings>(Settings.ResolveObject());
 }
 
