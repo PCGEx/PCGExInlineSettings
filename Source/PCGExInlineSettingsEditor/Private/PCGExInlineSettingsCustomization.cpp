@@ -18,6 +18,7 @@
 #include "AssetRegistry/AssetRegistryHelpers.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
+#include "Blueprint/BlueprintSupport.h"
 #include "Engine/Blueprint.h"
 #include "Framework/Commands/UIAction.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
@@ -26,6 +27,7 @@
 #include "Styling/AppStyle.h"
 #include "Styling/StyleColors.h"
 #include "Textures/SlateIcon.h"
+#include "UObject/SoftObjectPath.h"
 #include "UObject/UnrealType.h"
 #include "UObject/UObjectGlobals.h"
 #include "UObject/UObjectIterator.h"
@@ -694,6 +696,14 @@ void FPCGExInlineSettingsCustomization::GatherBlueprintElementEntries(const FTex
 	{
 		if (!UAssetRegistryHelpers::IsAssetDataBlueprintOfClassSet(AssetData, ElementClassPaths)
 			|| !AssetData.GetTagValueRef<bool>(GET_MEMBER_NAME_CHECKED(UPCGBlueprintBaseElement, bExposeToLibrary)))
+		{
+			return true;
+		}
+
+		// Editor-only native parents are stripped on cook, same as the editor-only native settings filtered above.
+		const FString NativeParentPath = AssetData.GetTagValueRef<FString>(FBlueprintTags::NativeParentClassPath);
+		const UClass* NativeParent = NativeParentPath.IsEmpty() ? nullptr : FSoftClassPath(NativeParentPath).ResolveClass();
+		if (NativeParent && IsEditorOnlyObject(NativeParent))
 		{
 			return true;
 		}
